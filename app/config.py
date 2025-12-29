@@ -3,6 +3,20 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 
+def get_database_url() -> str:
+    """Get database URL and ensure it uses asyncpg driver."""
+    url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/allergyguard")
+
+    # Render and other platforms provide postgres:// or postgresql://
+    # We need postgresql+asyncpg:// for async SQLAlchemy
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    return url
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -13,7 +27,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
     # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/allergyguard")
+    DATABASE_URL: str = get_database_url()
 
     # JWT
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
