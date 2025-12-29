@@ -22,8 +22,18 @@ config = context.config
 # Get settings
 settings = get_settings()
 
+
+def get_async_database_url(url: str) -> str:
+    """Ensure database URL uses asyncpg driver."""
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
+
+
 # Override sqlalchemy.url with environment variable
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", get_async_database_url(settings.DATABASE_URL))
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
