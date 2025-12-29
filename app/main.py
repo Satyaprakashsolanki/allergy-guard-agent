@@ -44,10 +44,19 @@ app = FastAPI(
 )
 
 # Configure CORS
+# Note: In production, replace "*" with specific origins like:
+# ["https://yourdomain.com", "https://app.yourdomain.com"]
+# When using allow_credentials=True, origins must be specific (not "*")
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:8081",
+    "http://10.0.2.2:8081",  # Android emulator
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure properly in production
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS if settings.DEBUG else ["*"],
+    allow_credentials=settings.DEBUG,  # Only allow credentials in debug mode with specific origins
     allow_methods=["*"],
     allow_headers=["*"],
 )

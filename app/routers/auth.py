@@ -31,9 +31,16 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
         display_name=user_data.display_name,
     )
 
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
+    try:
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+    except Exception:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user account. Please try again."
+        )
 
     # Generate tokens
     access_token = create_access_token(data={"sub": str(new_user.id)})

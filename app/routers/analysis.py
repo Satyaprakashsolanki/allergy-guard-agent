@@ -1,6 +1,6 @@
 """Analysis endpoints for menu scanning and response analysis."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -89,7 +89,7 @@ async def analyze_menu(
             dishes=dish_analyses,
             raw_text=request.menu_text,
             dish_count=len(dishes),
-            analyzed_at=datetime.utcnow()
+            analyzed_at=datetime.now(timezone.utc)
         )
 
     except Exception as e:
@@ -108,7 +108,7 @@ async def analyze_menu(
             ],
             raw_text=request.menu_text,
             dish_count=0,
-            analyzed_at=datetime.utcnow()
+            analyzed_at=datetime.now(timezone.utc)
         )
 
 
@@ -134,7 +134,7 @@ async def analyze_response(
             confidence=result.get("confidence", 0.5),
             flags=result.get("flags", []),
             recommendation=result.get("recommendation", "Please verify with restaurant staff."),
-            analyzed_at=datetime.utcnow()
+            analyzed_at=datetime.now(timezone.utc)
         )
 
     except Exception as e:
@@ -145,7 +145,7 @@ async def analyze_response(
             confidence=0.0,
             flags=["Analysis error occurred"],
             recommendation="Unable to analyze response. Please verify directly with restaurant staff and use your own judgment.",
-            analyzed_at=datetime.utcnow()
+            analyzed_at=datetime.now(timezone.utc)
         )
 
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
@@ -41,8 +41,15 @@ async def delete_current_user(
     db: AsyncSession = Depends(get_db)
 ):
     """Delete current user's account (GDPR compliance)."""
-    await db.delete(current_user)
-    await db.commit()
+    try:
+        await db.delete(current_user)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete account. Please try again."
+        )
     return None
 
 
@@ -65,27 +72,36 @@ async def update_user_allergens(
             detail=f"Invalid allergen IDs: {', '.join(invalid_ids)}"
         )
 
-    # Delete existing user allergens
-    await db.execute(delete(UserAllergen).where(UserAllergen.user_id == current_user.id))
+    try:
+        # Delete existing user allergens
+        await db.execute(delete(UserAllergen).where(UserAllergen.user_id == current_user.id))
 
-    # Add new allergens
-    new_allergens = []
-    for allergen in allergen_data.allergens:
-        user_allergen = UserAllergen(
-            user_id=current_user.id,
-            allergen_id=allergen.allergen_id,
-            severity=allergen.severity
+        # Add new allergens
+        new_allergens = []
+        for allergen in allergen_data.allergens:
+            user_allergen = UserAllergen(
+                user_id=current_user.id,
+                allergen_id=allergen.allergen_id,
+                severity=allergen.severity
+            )
+            db.add(user_allergen)
+            new_allergens.append(user_allergen)
+
+        await db.commit()
+
+        # Refresh to get IDs
+        for ua in new_allergens:
+            await db.refresh(ua)
+
+        return [UserAllergenResponse.model_validate(ua) for ua in new_allergens]
+    except HTTPException:
+        raise
+    except Exception:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update allergens. Please try again."
         )
-        db.add(user_allergen)
-        new_allergens.append(user_allergen)
-
-    await db.commit()
-
-    # Refresh to get IDs
-    for ua in new_allergens:
-        await db.refresh(ua)
-
-    return [UserAllergenResponse.model_validate(ua) for ua in new_allergens]
 
 
 @router.get("/me/allergens", response_model=list[UserAllergenResponse])
@@ -108,7 +124,7 @@ async def complete_onboarding(
 ):
     """Mark user's onboarding as complete."""
     current_user.onboarding_complete = True
-    current_user.disclaimer_accepted_at = datetime.utcnow()
+    current_user.disclaimer_accepted_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(current_user)
