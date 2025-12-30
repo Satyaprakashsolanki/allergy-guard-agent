@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
@@ -124,7 +124,7 @@ async def complete_onboarding(
 ):
     """Mark user's onboarding as complete."""
     current_user.onboarding_complete = True
-    current_user.disclaimer_accepted_at = datetime.now(timezone.utc)
+    current_user.disclaimer_accepted_at = datetime.utcnow()
 
     await db.commit()
     await db.refresh(current_user)

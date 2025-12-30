@@ -44,21 +44,35 @@ app = FastAPI(
 )
 
 # Configure CORS
-# Note: In production, replace "*" with specific origins like:
-# ["https://yourdomain.com", "https://app.yourdomain.com"]
-# When using allow_credentials=True, origins must be specific (not "*")
-ALLOWED_ORIGINS = [
+# Development: Allow localhost origins for testing
+# Production: Use CORS_ORIGINS from environment variable or restrict to specific domains
+DEV_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:8081",
     "http://10.0.2.2:8081",  # Android emulator
+    "http://127.0.0.1:8081",
 ]
+
+# In production, CORS_ORIGINS should be set via environment variable
+# e.g., CORS_ORIGINS="https://yourapp.com,https://api.yourapp.com"
+# If not set, production defaults to restrictive mode (no wildcard)
+def get_cors_origins():
+    if settings.DEBUG or settings.ENVIRONMENT == "development":
+        return DEV_ORIGINS
+    # Production: use configured origins or empty list (no CORS)
+    if settings.CORS_ORIGINS and settings.CORS_ORIGINS != ["*"]:
+        return settings.CORS_ORIGINS
+    # SECURITY: Don't allow wildcard in production - log warning
+    import logging
+    logging.warning("CORS_ORIGINS not configured for production - using restrictive defaults")
+    return []  # Restrictive by default in production
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS if settings.DEBUG else ["*"],
-    allow_credentials=settings.DEBUG,  # Only allow credentials in debug mode with specific origins
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=get_cors_origins(),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 

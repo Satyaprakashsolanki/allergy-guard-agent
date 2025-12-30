@@ -10,9 +10,9 @@ from uuid import UUID
 
 class MenuAnalysisRequest(BaseModel):
     """Request for menu text analysis."""
-    menu_text: str = Field(..., min_length=1, description="OCR extracted menu text")
-    user_allergens: List[str] = Field(..., description="List of user's allergen IDs")
-    cuisine_hint: Optional[str] = Field(None, description="Optional cuisine type hint")
+    menu_text: str = Field(..., min_length=1, max_length=50000, description="OCR extracted menu text (max 50KB)")
+    user_allergens: List[str] = Field(..., min_length=1, max_length=50, description="List of user's allergen IDs")
+    cuisine_hint: Optional[str] = Field(None, max_length=100, description="Optional cuisine type hint")
 
 
 class DishAnalysis(BaseModel):
