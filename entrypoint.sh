@@ -18,6 +18,12 @@ async def wait_for_db():
         print('DATABASE_URL not set!')
         sys.exit(1)
 
+    # Convert postgres:// or postgresql:// to postgresql+asyncpg://
+    if db_url.startswith('postgres://'):
+        db_url = db_url.replace('postgres://', 'postgresql+asyncpg://', 1)
+    elif db_url.startswith('postgresql://') and '+asyncpg' not in db_url:
+        db_url = db_url.replace('postgresql://', 'postgresql+asyncpg://', 1)
+
     engine = create_async_engine(db_url)
     max_retries = 30
     retry_interval = 2
