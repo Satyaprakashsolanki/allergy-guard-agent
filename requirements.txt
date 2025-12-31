@@ -17,6 +17,9 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1  # Pin to 4.0.1 for full passlib compatibility
 
+# Google OAuth
+google-auth==2.27.0
+
 # OpenAI
 openai==1.10.0
 

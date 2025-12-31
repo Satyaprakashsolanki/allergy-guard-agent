@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Text, ForeignKey, DateTime, Numeric
+from sqlalchemy import Column, String, Integer, Text, ForeignKey, DateTime, Numeric, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
@@ -20,12 +20,23 @@ class Scan(Base):
     dish_count = Column(Integer, nullable=False, default=0)
     avg_confidence = Column(Numeric(3, 2), nullable=False, default=0.0)  # OCR confidence
 
+    # Context data for AI features
+    cuisine_hint = Column(String(100), nullable=True)  # Detected/provided cuisine type
+    allergens_used = Column(JSONB, nullable=True, default=list)  # User's allergens at scan time
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="scans")
     dishes = relationship("ScanDish", back_populates="scan", cascade="all, delete-orphan")
+    response_analyses = relationship("ResponseAnalysis", back_populates="scan")
+
+    # Indexes for common queries
+    __table_args__ = (
+        Index('idx_scans_user_created', 'user_id', 'created_at'),
+        Index('idx_scans_cuisine', 'cuisine_hint'),
+    )
 
     def __repr__(self):
         return f"<Scan {self.id} by user {self.user_id}>"
@@ -53,6 +64,12 @@ class ScanDish(Base):
 
     # Relationships
     scan = relationship("Scan", back_populates="dishes")
+
+    # Indexes for common queries
+    __table_args__ = (
+        Index('idx_scan_dishes_scan', 'scan_id'),
+        Index('idx_scan_dishes_risk', 'risk_level'),
+    )
 
     def __repr__(self):
         return f"<ScanDish {self.name} - {self.risk_level}>"

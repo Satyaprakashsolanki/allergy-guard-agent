@@ -34,6 +34,13 @@ from app.schemas.questions import (
     GenerateQuestionsRequest,
     GenerateQuestionsResponse,
 )
+from app.schemas.preferences import (
+    PreferencesUpdate,
+    PreferencesResponse,
+    CUISINE_OPTIONS,
+    RISK_TOLERANCE_OPTIONS,
+    DINING_CONTEXT_OPTIONS,
+)
 
 __all__ = [
     # User
@@ -67,4 +74,10 @@ __all__ = [
     "QuestionsResponse",
     "GenerateQuestionsRequest",
     "GenerateQuestionsResponse",
+    # Preferences
+    "PreferencesUpdate",
+    "PreferencesResponse",
+    "CUISINE_OPTIONS",
+    "RISK_TOLERANCE_OPTIONS",
+    "DINING_CONTEXT_OPTIONS",
 ]

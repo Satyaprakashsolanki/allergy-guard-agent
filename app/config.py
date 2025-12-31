@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 
+    # Google OAuth
+    # Get this from Google Cloud Console: https://console.cloud.google.com/apis/credentials
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+
     # CORS
     CORS_ORIGINS: list[str] = os.getenv("CORS_ORIGINS", "*").split(",")
 

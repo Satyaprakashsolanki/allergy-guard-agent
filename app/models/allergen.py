@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, ForeignKey, DateTime
+from sqlalchemy import Column, String, ForeignKey, DateTime, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
@@ -46,6 +46,18 @@ class UserAllergen(Base):
     # Relationships
     user = relationship("User", back_populates="allergens")
     allergen = relationship("Allergen", back_populates="user_allergens")
+
+    # Constraints and indexes
+    __table_args__ = (
+        # Prevent duplicate allergen entries for same user
+        UniqueConstraint('user_id', 'allergen_id', name='uq_user_allergen'),
+        # Fast lookup by user
+        Index('idx_user_allergens_user', 'user_id'),
+        # Fast lookup by allergen (for analytics)
+        Index('idx_user_allergens_allergen', 'allergen_id'),
+        # Filter by severity
+        Index('idx_user_allergens_severity', 'severity'),
+    )
 
     def __repr__(self):
         return f"<UserAllergen user={self.user_id} allergen={self.allergen_id}>"

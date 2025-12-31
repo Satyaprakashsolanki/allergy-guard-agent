@@ -136,12 +136,22 @@ def rule_based_menu_analysis(menu_text: str, user_allergens: list[str]) -> dict:
 async def analyze_menu_text(
     menu_text: str,
     user_allergens: list[str],
-    cuisine_hint: Optional[str] = None
+    cuisine_hint: Optional[str] = None,
+    user_preferences: Optional[dict] = None
 ) -> dict:
     """
     Analyze menu text for potential allergens using OpenAI.
 
     CRITICAL: Requires OpenAI API. Raises error if not configured.
+
+    Args:
+        menu_text: The menu text to analyze
+        user_allergens: List of allergen IDs the user is allergic to
+        cuisine_hint: Optional hint about the cuisine type
+        user_preferences: Optional dict with user preferences:
+            - favorite_cuisines: List of cuisine types user frequently eats
+            - risk_tolerance: "cautious", "standard", or "relaxed"
+            - default_dining_context: "restaurant", "home", "takeout", or "travel"
     """
     if not client:
         logger.error("OpenAI client not available - cannot analyze menu")
@@ -151,11 +161,29 @@ async def analyze_menu_text(
     allergen_list = ", ".join([f"{a['name']} (also known as: {', '.join(a['synonyms'][:5])})"
                                for a in allergen_info.values()])
 
+    # Build preferences context
+    preferences_context = ""
+    if user_preferences:
+        risk_tolerance = user_preferences.get("risk_tolerance", "standard")
+        dining_context = user_preferences.get("default_dining_context", "restaurant")
+        favorite_cuisines = user_preferences.get("favorite_cuisines", [])
+
+        preferences_context = f"""
+USER PREFERENCES:
+- Risk Tolerance: {risk_tolerance.upper()} {'(be extra cautious, flag even low-probability risks)' if risk_tolerance == 'cautious' else '(balanced approach)' if risk_tolerance == 'standard' else '(only flag high-probability risks)'}
+- Dining Context: {dining_context.upper()} {'(can ask staff questions)' if dining_context == 'restaurant' else '(user controls ingredients)' if dining_context == 'home' else "(can't easily ask questions)" if dining_context == 'takeout' else '(unfamiliar environment, extra caution)'}
+{f'- Frequently eats: {", ".join(favorite_cuisines)} (user is familiar with these cuisines, highlight any unusual allergen risks)' if favorite_cuisines else ''}
+"""
+
+    # Build allergen ID to name mapping for the prompt
+    allergen_id_name_map = {aid: info["name"] for aid, info in allergen_info.items()}
+
     user_prompt = f"""Analyze this menu text for allergens.
 
 USER'S ALLERGENS: {allergen_list}
+ALLERGEN ID MAPPING: {json.dumps(allergen_id_name_map)}
 {f'CUISINE TYPE: {cuisine_hint}' if cuisine_hint else ''}
-
+{preferences_context}
 MENU TEXT:
 {menu_text}
 
@@ -167,15 +195,29 @@ Return a JSON object with this exact structure:
             "risk_level": "high|medium|low",
             "detected_allergens": ["allergen_id1", "allergen_id2"],
             "confidence": 0.0-1.0,
-            "notes": "explanation of why this risk level"
+            "notes": "Brief overall explanation",
+            "allergen_breakdown": [
+                {{
+                    "allergen_id": "the allergen ID",
+                    "allergen_name": "human readable name",
+                    "risk_level": "high|medium|low",
+                    "source": "Where detected (e.g., 'in description', 'hidden in sauce', 'possible cross-contact')",
+                    "reasoning": "Why this specific allergen has this risk level for this dish"
+                }}
+            ]
         }}
     ]
 }}
 
-Important:
+CRITICAL INSTRUCTIONS:
 - detected_allergens should use these exact IDs: {list(allergen_info.keys())}
+- allergen_breakdown MUST include an entry for EACH allergen in detected_allergens
+- For dishes with NO detected allergens, include allergen_breakdown for each user allergen with risk_level "low" and reasoning explaining why it's unlikely
+- Adjust risk assessment based on user's risk tolerance preference
 - When in doubt, use "medium" risk level
-- Include notes explaining hidden sources or cross-contact risks"""
+- The "source" field should be specific: "mentioned in description", "hidden source (soy sauce)", "possible cross-contact with wheat items", etc.
+- The "reasoning" field should explain WHY: "Pad Thai typically contains fish sauce which has shellfish derivatives"
+- For cuisines the user frequently eats, highlight any less-obvious allergen risks they might overlook"""
 
     try:
         response = await client.chat.completions.create(
@@ -213,6 +255,134 @@ CLARITY LEVELS:
 - "dangerous": Dismissive or potentially dangerous response
 
 Be CONSERVATIVE - when in doubt, mark as "unclear"."""
+
+
+SMART_QUESTIONS_SYSTEM_PROMPT = """You are an expert allergen safety consultant generating personalized questions for restaurant staff.
+
+Your job is to create INTELLIGENT, CONTEXT-AWARE questions based on:
+1. The specific dishes and their detected allergens from a menu scan
+2. The user's specific allergens and their SEVERITY levels
+3. Common hidden sources and cross-contamination risks
+
+QUESTION PRIORITY RULES:
+- "high": Questions about dishes with detected allergens, especially for SEVERE allergies
+- "medium": Questions about cross-contamination, hidden sources, cooking methods
+- "low": General verification questions, modification requests
+
+Generate questions that are:
+- SPECIFIC to the dishes analyzed (not generic)
+- ACTIONABLE and easy for staff to answer
+- PRIORITIZED by safety risk
+- EDUCATIONAL (help user understand the risk)
+
+Return structured JSON only."""
+
+
+async def generate_smart_questions(
+    scan_context: dict,
+    user_allergens: list[dict],  # List of {allergen_id, severity}
+) -> dict:
+    """
+    Generate AI-powered personalized questions based on scan results.
+
+    This connects the scan analysis to the questions feature, making
+    the app truly intelligent and context-aware.
+
+    Args:
+        scan_context: {
+            dishes: [{name, risk_level, detected_allergens, notes}],
+            cuisine_hint: optional str,
+            raw_text: optional str (original menu text)
+        }
+        user_allergens: [{allergen_id: str, severity: str}]
+
+    Returns:
+        {
+            questions: [{category, question, priority, related_dish, reasoning}],
+            risk_summary: str,
+            critical_allergens: [str]
+        }
+    """
+    if not client:
+        logger.error("OpenAI client not available - cannot generate smart questions")
+        raise OpenAINotConfiguredError("OpenAI API is not configured. Please contact support.")
+
+    # Build allergen info with severity
+    allergen_details = []
+    critical_allergens = []
+    for ua in user_allergens:
+        allergen_data = next((a for a in ALLERGENS_DATA if a["id"] == ua["allergen_id"]), None)
+        if allergen_data:
+            severity = ua.get("severity", "moderate")
+            allergen_details.append({
+                "id": ua["allergen_id"],
+                "name": allergen_data["name"],
+                "severity": severity,
+                "hidden_sources": allergen_data["hidden_sources"][:5],
+                "synonyms": allergen_data["synonyms"][:5]
+            })
+            if severity == "severe":
+                critical_allergens.append(allergen_data["name"])
+
+    # Build dish context from scan
+    dishes_info = scan_context.get("dishes", [])
+    high_risk_dishes = [d for d in dishes_info if d.get("risk_level") == "high"]
+    medium_risk_dishes = [d for d in dishes_info if d.get("risk_level") == "medium"]
+
+    user_prompt = f"""Generate personalized safety questions based on this menu scan analysis.
+
+USER'S ALLERGENS (with severity):
+{json.dumps(allergen_details, indent=2)}
+
+SCAN RESULTS - HIGH RISK DISHES:
+{json.dumps(high_risk_dishes, indent=2) if high_risk_dishes else "None detected"}
+
+SCAN RESULTS - MEDIUM RISK DISHES:
+{json.dumps(medium_risk_dishes, indent=2) if medium_risk_dishes else "None detected"}
+
+CUISINE TYPE: {scan_context.get('cuisine_hint', 'Unknown')}
+
+Generate 5-8 personalized questions. Return JSON:
+{{
+    "questions": [
+        {{
+            "category": "Cross-Contact|Ingredients|Hidden Sources|Specific Dish|Chef Consultation",
+            "question": "The specific question to ask",
+            "priority": "high|medium|low",
+            "related_dish": "dish name if applicable, or null",
+            "reasoning": "Brief explanation of why this question matters"
+        }}
+    ],
+    "risk_summary": "A 1-2 sentence summary of the overall risk assessment",
+    "most_concerning": ["List of most concerning dishes or ingredients"]
+}}
+
+IMPORTANT:
+- For SEVERE allergies, prioritize chef consultation and cross-contamination questions
+- Reference specific dish names when asking about detected allergens
+- Include at least one question about hidden sources relevant to the cuisine type
+- Make questions conversational but clear"""
+
+    try:
+        response = await client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": SMART_QUESTIONS_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.4,
+            response_format={"type": "json_object"}
+        )
+
+        result = json.loads(response.choices[0].message.content)
+        result["critical_allergens"] = critical_allergens
+        return result
+
+    except OpenAINotConfiguredError:
+        raise
+    except Exception as e:
+        logger.error(f"OpenAI API error during question generation: {e}")
+        raise RuntimeError(f"AI question generation failed: {str(e)}")
 
 
 async def analyze_staff_response(

@@ -11,7 +11,7 @@ from uuid import UUID
 class UserBase(BaseModel):
     """Base user schema with common fields."""
     email: EmailStr
-    display_name: str = Field(..., min_length=1, max_length=100)
+    display_name: str = Field(..., min_length=2, max_length=100)
 
 
 class UserCreate(UserBase):
@@ -27,7 +27,13 @@ class UserLogin(BaseModel):
 
 class UserUpdate(BaseModel):
     """Schema for updating user profile."""
-    display_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    display_name: Optional[str] = Field(None, min_length=2, max_length=100)
+
+
+class PasswordChange(BaseModel):
+    """Schema for changing password."""
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=72)  # bcrypt limit is 72 bytes
 
 
 class UserResponse(UserBase):
@@ -36,6 +42,8 @@ class UserResponse(UserBase):
     is_active: bool
     is_verified: bool
     onboarding_complete: bool
+    auth_provider: str = "email"  # "email" or "google"
+    profile_picture_url: Optional[str] = None
     disclaimer_accepted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
@@ -82,6 +90,31 @@ class AuthResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     user: UserResponse
+    is_new_user: bool = False  # True if user was just created (for onboarding flow)
+
+
+# ========================
+# OAuth Schemas
+# ========================
+
+class GoogleAuthRequest(BaseModel):
+    """
+    Request for Google OAuth authentication.
+
+    The id_token is obtained from Google Sign-In SDK on the client.
+    We verify it server-side to ensure authenticity.
+    """
+    id_token: str = Field(..., description="Google ID token from client-side sign-in")
+
+
+class OAuthUserInfo(BaseModel):
+    """Parsed user info from OAuth provider."""
+    provider: str  # "google"
+    provider_user_id: str  # Google's unique user ID
+    email: EmailStr
+    display_name: str
+    profile_picture_url: Optional[str] = None
+    email_verified: bool = False
 
 
 # Forward reference for circular import
