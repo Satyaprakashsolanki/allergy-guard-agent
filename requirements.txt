@@ -19,6 +19,7 @@ bcrypt==4.0.1  # Pin to 4.0.1 for full passlib compatibility
 
 # Google OAuth
 google-auth==2.27.0
+requests==2.31.0
 
 # OpenAI
 openai==1.10.0
